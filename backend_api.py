@@ -151,12 +151,24 @@ def get_users():
         if d.get('last_seen'):
             try:
                 last_seen = datetime.datetime.fromisoformat(d['last_seen'])
-                if (now - last_seen).total_seconds() < 40: # Online if seen in last 40s
+                if (now - last_seen).total_seconds() < 25: # Online if seen in last 25s
                     is_online = True
             except: pass
         d['is_online'] = is_online
         result.append(d)
     return jsonify(result)
+
+@app.route('/api/admin/clear_all', methods=['POST'])
+def clear_all_data():
+    conn = get_db_connection()
+    conn.execute('DELETE FROM tasks')
+    conn.execute('DELETE FROM roadmap')
+    conn.execute('DELETE FROM shared_links')
+    conn.execute('DELETE FROM messages')
+    conn.execute('DELETE FROM posts')
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "cleared"}), 200
 
 @app.route('/api/heartbeat', methods=['POST'])
 def heartbeat():
