@@ -81,9 +81,20 @@ def init_db():
         priority TEXT,
         owner TEXT,
         due_date TEXT,
+        start_date TEXT,
         progress INTEGER DEFAULT 0,
         parentId INTEGER,
         description TEXT,
+        timestamp TEXT
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS shared_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner TEXT,
+        shared_with TEXT,
+        day_name TEXT,
+        archived_date TEXT,
+        plan_content TEXT,
         timestamp TEXT
     )''')
 
@@ -98,11 +109,24 @@ def init_db():
     except: pass
     try: c.execute("ALTER TABLE roadmap ADD COLUMN description TEXT")
     except: pass
+    try: c.execute("ALTER TABLE roadmap ADD COLUMN start_date TEXT")
+    except: pass
     try: c.execute("ALTER TABLE shared_links ADD COLUMN description TEXT")
     except: pass
     try: c.execute("ALTER TABLE shared_links ADD COLUMN contentType TEXT")
     except: pass
     try: c.execute("ALTER TABLE shared_links ADD COLUMN fileData TEXT")
+    except: pass
+    try:
+        c.execute('''CREATE TABLE IF NOT EXISTS shared_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner TEXT,
+            shared_with TEXT,
+            day_name TEXT,
+            archived_date TEXT,
+            plan_content TEXT,
+            timestamp TEXT
+        )''')
     except: pass
 
     # Insert Initial Users if empty
@@ -371,13 +395,31 @@ def get_roadmap():
 @app.route('/api/roadmap', methods=['POST'])
 def add_roadmap():
     data = request.json
-    conn = get_db_connection()
-    conn.execute('INSERT INTO roadmap (title, category, status, priority, owner, due_date, progress, parentId, description, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                 (data.get('title'), data.get('category'), data.get('status', 'pending'), data.get('priority', 'medium'), 
-                  data.get('from'), data.get('due_date'), data.get('progress', 0), data.get('parentId'), data.get('desc'), datetime.datetime.now(datetime.timezone.utc).isoformat()))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "created"}), 201
+    try:
+        conn = get_db_connection()
+        # Using .get for all fields to avoid KeyErrors
+        title = data.get('title', 'مهمة جديدة')
+        category = data.get('category', 'general')
+        status = data.get('status', 'pending')
+        priority = data.get('priority', 'medium')
+        owner = data.get('owner') or data.get('from') or 'nora@hyat.co'
+        due_date = data.get('due_date')
+        start_date = data.get('start_date')
+        progress = data.get('progress', 0)
+        parentId = data.get('parentId')
+        description = data.get('description') or data.get('desc', '')
+
+        conn.execute('''INSERT INTO roadmap 
+                     (title, category, status, priority, owner, due_date, start_date, progress, parentId, description, timestamp) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                     (title, category, status, priority, owner, due_date, start_date, progress, parentId, description, 
+                      datetime.datetime.now(datetime.timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "created"}), 201
+    except Exception as e:
+        print(f"Error in add_roadmap: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/roadmap/<int:id>', methods=['DELETE'])
 def delete_roadmap(id):
@@ -388,21 +430,50 @@ def delete_roadmap(id):
     return jsonify({"status": "deleted"}), 200
 
 @app.route('/api/roadmap/<int:id>', methods=['PUT'])
-def update_roadmap(id):
+def update_roadmap_item(id):
     data = request.json
-    conn = get_db_connection()
-    conn.execute('''UPDATE roadmap SET 
+    try:
+        conn = get_db_connection()
+        # COALESCE helps keep existing values if new ones are null
+        conn.execute('''UPDATE roadmap SET 
                     title = COALESCE(?, title),
                     category = COALESCE(?, category),
                     status = COALESCE(?, status),
+                    priority = COALESCE(?, priority),
                     due_date = COALESCE(?, due_date),
+                    start_date = COALESCE(?, start_date),
                     progress = COALESCE(?, progress),
                     description = COALESCE(?, description)
                     WHERE id = ?''',
-                 (data.get('title'), data.get('category'), data.get('status'), data.get('due_date'), data.get('progress'), data.get('desc'), id))
+                 (data.get('title'), data.get('category'), data.get('status'), data.get('priority'),
+                  data.get('due_date'), data.get('start_date'), data.get('progress'), 
+                  data.get('description') or data.get('desc'), id))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "updated"}), 200
+    except Exception as e:
+        print(f"Error in update_roadmap: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- SHARED PLANS API ---
+@app.route('/api/shared_plans', methods=['POST'])
+def add_shared_plan():
+    data = request.json
+    import json
+    conn = get_db_connection()
+    conn.execute('INSERT INTO shared_plans (owner, shared_with, day_name, archived_date, plan_content, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
+                 (data.get('owner'), data.get('shared_with'), data.get('day_name'), data.get('archived_date'), 
+                  json.dumps(data.get('content')), datetime.datetime.now(datetime.timezone.utc).isoformat()))
     conn.commit()
     conn.close()
-    return jsonify({"status": "updated"}), 200
+    return jsonify({"status": "shared"}), 201
+
+@app.route('/api/shared_plans', methods=['GET'])
+def get_shared_plans():
+    conn = get_db_connection()
+    plans = conn.execute('SELECT * FROM shared_plans ORDER BY id DESC').fetchall()
+    conn.close()
+    return jsonify([dict(p) for p in plans])
 
 init_db()
 
