@@ -37,6 +37,7 @@ def init_db():
         status TEXT DEFAULT 'pending',
         priority TEXT DEFAULT 'medium',
         type TEXT DEFAULT 'dev',
+        description TEXT,
         subtasks TEXT,
         created_at TEXT
     )''')
@@ -60,19 +61,33 @@ def init_db():
         timestamp TEXT
     )''')
 
-    c.execute('''CREATE TABLE IF NOT EXISTS comments (
+    c.execute('''CREATE TABLE IF NOT EXISTS shared_links (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        post_id INTEGER,
-        author TEXT,
-        content TEXT,
-        timestamp TEXT,
-        FOREIGN KEY(post_id) REFERENCES posts(id)
+        name TEXT,
+        url TEXT,
+        type TEXT,
+        owner TEXT,
+        timestamp TEXT
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS roadmap (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        category TEXT,
+        status TEXT,
+        priority TEXT,
+        owner TEXT,
+        due_date TEXT,
+        progress INTEGER DEFAULT 0,
+        timestamp TEXT
     )''')
 
     # Migration: Ensure columns exist if tables already created
     try: c.execute("ALTER TABLE users ADD COLUMN last_seen TEXT")
     except: pass
     try: c.execute("ALTER TABLE messages ADD COLUMN is_read INTEGER DEFAULT 0")
+    except: pass
+    try: c.execute("ALTER TABLE tasks ADD COLUMN description TEXT")
     except: pass
 
     # Insert Initial Users if empty
@@ -135,7 +150,7 @@ def heartbeat():
     if not email: return jsonify({"status": "error"}), 400
     conn = get_db_connection()
     conn.execute('UPDATE users SET last_seen = ? WHERE email = ?', 
-                 (datetime.datetime.now().isoformat(), email))
+                 (datetime.datetime.now(datetime.timezone.utc).isoformat(), email))
     conn.commit()
     conn.close()
     return jsonify({"status": "ok"}), 200
@@ -169,8 +184,8 @@ def add_task():
         
         conn = get_db_connection()
         c = conn.cursor()
-        c.execute('INSERT INTO tasks (title, assigned_to, assigned_from, status, priority, type, subtasks, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                  (data['title'], data['to'], data['from'], 'pending', data['priority'], data['type'], subtasks_json, datetime.datetime.now().isoformat()))
+        c.execute('INSERT INTO tasks (title, assigned_to, assigned_from, status, priority, type, description, subtasks, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  (data['title'], data['to'], data['from'], 'pending', data['priority'], data['type'], data.get('details', ''), subtasks_json, datetime.datetime.now(datetime.timezone.utc).isoformat()))
         conn.commit()
         task_id = c.lastrowid
         conn.close()
@@ -205,9 +220,10 @@ def update_task(id):
                     title = COALESCE(?, title),
                     assigned_to = COALESCE(?, assigned_to),
                     priority = COALESCE(?, priority),
-                    type = COALESCE(?, type)
+                    type = COALESCE(?, type),
+                    description = COALESCE(?, description)
                     WHERE id = ?''',
-                 (data.get('title'), data.get('to'), data.get('priority'), data.get('type'), id))
+                 (data.get('title'), data.get('to'), data.get('priority'), data.get('type'), data.get('details'), id))
     conn.commit()
     conn.close()
     return jsonify({"status": "updated"}), 200
@@ -226,7 +242,7 @@ def send_message():
     data = request.json
     conn = get_db_connection()
     conn.execute('INSERT INTO messages (sender, receiver, content, timestamp) VALUES (?, ?, ?, ?)',
-                 (data['from'], data['to'], data['text'], datetime.datetime.now().isoformat()))
+                 (data['from'], data['to'], data['text'], datetime.datetime.now(datetime.timezone.utc).isoformat()))
     conn.commit()
     conn.close()
     return jsonify({"status": "sent"}), 201
@@ -264,20 +280,76 @@ def add_post():
     
     conn = get_db_connection()
     conn.execute('INSERT INTO posts (author, mention, subject, content, images, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
-                 (data['from'], data['to'], data['subject'], data['text'], images_json, datetime.datetime.now().isoformat()))
+                 (data['from'], data['to'], data['subject'], data['text'], images_json, datetime.datetime.now(datetime.timezone.utc).isoformat()))
     conn.commit()
     conn.close()
     return jsonify({"status": "posted"}), 201
 
-@app.route('/api/posts/<int:post_id>/comments', methods=['POST'])
-def add_comment(post_id):
+# --- SHARED LINKS API ---
+@app.route('/api/links', methods=['GET'])
+def get_links():
+    conn = get_db_connection()
+    links = conn.execute('SELECT * FROM shared_links ORDER BY id DESC').fetchall()
+    conn.close()
+    return jsonify([dict(l) for l in links])
+
+@app.route('/api/links', methods=['POST'])
+def add_link():
     data = request.json
     conn = get_db_connection()
-    conn.execute('INSERT INTO comments (post_id, author, content, timestamp) VALUES (?, ?, ?, ?)',
-                 (post_id, data['from'], data['text'], datetime.datetime.now().isoformat()))
+    conn.execute('INSERT INTO shared_links (name, url, type, owner, timestamp) VALUES (?, ?, ?, ?, ?)',
+                 (data.get('name'), data.get('url'), data.get('type', 'link'), data.get('from'), datetime.datetime.now(datetime.timezone.utc).isoformat()))
     conn.commit()
     conn.close()
-    return jsonify({"status": "commented"}), 201
+    return jsonify({"status": "created"}), 201
+
+@app.route('/api/links/<int:id>', methods=['DELETE'])
+def delete_link(id):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM shared_links WHERE id = ?', (id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "deleted"}), 200
+
+# --- ROADMAP API ---
+@app.route('/api/roadmap', methods=['GET'])
+def get_roadmap():
+    conn = get_db_connection()
+    items = conn.execute('SELECT * FROM roadmap ORDER BY id DESC').fetchall()
+    conn.close()
+    return jsonify([dict(i) for i in items])
+
+@app.route('/api/roadmap', methods=['POST'])
+def add_roadmap():
+    data = request.json
+    conn = get_db_connection()
+    conn.execute('INSERT INTO roadmap (title, category, status, priority, owner, due_date, progress, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                 (data.get('title'), data.get('category'), data.get('status', 'pending'), data.get('priority', 'medium'), 
+                  data.get('from'), data.get('due_date'), data.get('progress', 0), datetime.datetime.now(datetime.timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "created"}), 201
+
+@app.route('/api/roadmap/<int:id>', methods=['DELETE'])
+def delete_roadmap(id):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM roadmap WHERE id = ?', (id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "deleted"}), 200
+
+@app.route('/api/roadmap/<int:id>', methods=['PUT'])
+def update_roadmap(id):
+    data = request.json
+    conn = get_db_connection()
+    conn.execute('''UPDATE roadmap SET 
+                    status = COALESCE(?, status),
+                    progress = COALESCE(?, progress)
+                    WHERE id = ?''',
+                 (data.get('status'), data.get('progress'), id))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "updated"}), 200
 
 init_db()
 
