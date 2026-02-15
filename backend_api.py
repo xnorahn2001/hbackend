@@ -67,6 +67,9 @@ def init_db():
         url TEXT,
         type TEXT,
         owner TEXT,
+        description TEXT,
+        contentType TEXT,
+        fileData TEXT,
         timestamp TEXT
     )''')
 
@@ -79,6 +82,8 @@ def init_db():
         owner TEXT,
         due_date TEXT,
         progress INTEGER DEFAULT 0,
+        parentId INTEGER,
+        description TEXT,
         timestamp TEXT
     )''')
 
@@ -88,6 +93,16 @@ def init_db():
     try: c.execute("ALTER TABLE messages ADD COLUMN is_read INTEGER DEFAULT 0")
     except: pass
     try: c.execute("ALTER TABLE tasks ADD COLUMN description TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE roadmap ADD COLUMN parentId INTEGER")
+    except: pass
+    try: c.execute("ALTER TABLE roadmap ADD COLUMN description TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE shared_links ADD COLUMN description TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE shared_links ADD COLUMN contentType TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE shared_links ADD COLUMN fileData TEXT")
     except: pass
 
     # Insert Initial Users if empty
@@ -296,12 +311,34 @@ def get_links():
 @app.route('/api/links', methods=['POST'])
 def add_link():
     data = request.json
+    import json
+    file_data_json = json.dumps(data.get('fileData')) if data.get('fileData') else None
+    
     conn = get_db_connection()
-    conn.execute('INSERT INTO shared_links (name, url, type, owner, timestamp) VALUES (?, ?, ?, ?, ?)',
-                 (data.get('name'), data.get('url'), data.get('type', 'link'), data.get('from'), datetime.datetime.now(datetime.timezone.utc).isoformat()))
+    conn.execute('INSERT INTO shared_links (name, url, type, owner, description, contentType, fileData, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                 (data.get('name'), data.get('url'), data.get('type', 'link'), data.get('from'), 
+                  data.get('desc'), data.get('contentType'), file_data_json, datetime.datetime.now(datetime.timezone.utc).isoformat()))
     conn.commit()
     conn.close()
     return jsonify({"status": "created"}), 201
+
+@app.route('/api/links/<int:id>', methods=['PUT'])
+def update_link(id):
+    data = request.json
+    import json
+    file_data_json = json.dumps(data.get('fileData')) if data.get('fileData') else None
+    conn = get_db_connection()
+    conn.execute('''UPDATE shared_links SET 
+                    name = COALESCE(?, name),
+                    url = COALESCE(?, url),
+                    description = COALESCE(?, description),
+                    contentType = COALESCE(?, contentType),
+                    fileData = COALESCE(?, fileData)
+                    WHERE id = ?''',
+                 (data.get('name'), data.get('url'), data.get('desc'), data.get('contentType'), file_data_json, id))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "updated"}), 200
 
 @app.route('/api/links/<int:id>', methods=['DELETE'])
 def delete_link(id):
@@ -323,9 +360,9 @@ def get_roadmap():
 def add_roadmap():
     data = request.json
     conn = get_db_connection()
-    conn.execute('INSERT INTO roadmap (title, category, status, priority, owner, due_date, progress, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    conn.execute('INSERT INTO roadmap (title, category, status, priority, owner, due_date, progress, parentId, description, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                  (data.get('title'), data.get('category'), data.get('status', 'pending'), data.get('priority', 'medium'), 
-                  data.get('from'), data.get('due_date'), data.get('progress', 0), datetime.datetime.now(datetime.timezone.utc).isoformat()))
+                  data.get('from'), data.get('due_date'), data.get('progress', 0), data.get('parentId'), data.get('desc'), datetime.datetime.now(datetime.timezone.utc).isoformat()))
     conn.commit()
     conn.close()
     return jsonify({"status": "created"}), 201
@@ -343,10 +380,14 @@ def update_roadmap(id):
     data = request.json
     conn = get_db_connection()
     conn.execute('''UPDATE roadmap SET 
+                    title = COALESCE(?, title),
+                    category = COALESCE(?, category),
                     status = COALESCE(?, status),
-                    progress = COALESCE(?, progress)
+                    due_date = COALESCE(?, due_date),
+                    progress = COALESCE(?, progress),
+                    description = COALESCE(?, description)
                     WHERE id = ?''',
-                 (data.get('status'), data.get('progress'), id))
+                 (data.get('title'), data.get('category'), data.get('status'), data.get('due_date'), data.get('progress'), data.get('desc'), id))
     conn.commit()
     conn.close()
     return jsonify({"status": "updated"}), 200
