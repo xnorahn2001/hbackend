@@ -101,6 +101,8 @@ def init_db():
     # Migration: Ensure columns exist if tables already created
     try: c.execute("ALTER TABLE users ADD COLUMN last_seen TEXT")
     except: pass
+    try: c.execute("ALTER TABLE users ADD COLUMN password TEXT")
+    except: pass
     try: c.execute("ALTER TABLE messages ADD COLUMN is_read INTEGER DEFAULT 0")
     except: pass
     try: c.execute("ALTER TABLE tasks ADD COLUMN description TEXT")
@@ -133,17 +135,52 @@ def init_db():
     c.execute("SELECT COUNT(*) FROM users")
     if c.fetchone()[0] == 0:
         users = [
-            ('ghada@hyat.co', 'أ. غاده', 'المدير العام', '', '#6366f1'),
-            ('lina@hyat.co', 'أ. لينا', 'مدير المشاريع', '', '#ec4899'),
-            ('norah@hyat.co', 'م. نورة', 'Tech Lead', '', '#10b981')
+            ('ghada@hyat.co', 'أ. غاده', 'المدير العام', '', '#6366f1', '123456'),
+            ('lina@hyat.co', 'أ. لينا', 'مدير المشاريع', '', '#ec4899', '123456'),
+            ('norah@hyat.co', 'م. نورة', 'Tech Lead', '', '#10b981', '123456')
         ]
-        c.executemany('INSERT INTO users (email, name, role, avatar, color) VALUES (?, ?, ?, ?, ?)', users)
+        c.executemany('INSERT INTO users (email, name, role, avatar, color, password) VALUES (?, ?, ?, ?, ?, ?)', users)
     
     conn.commit()
     conn.close()
     print("Database initialized.")
 
 # --- API ENDPOINTS ---
+
+@app.route('/api/users/update', methods=['PUT'])
+def update_user_profile():
+    data = request.json
+    email = data.get('email')
+    conn = get_db_connection()
+    
+    # Dynamic update query
+    fields = []
+    values = []
+    
+    if 'name' in data:
+        fields.append("name = ?")
+        values.append(data['name'])
+    if 'password' in data:
+        fields.append("password = ?")
+        values.append(data['password'])
+    if 'avatar' in data:
+        fields.append("avatar = ?")
+        values.append(data['avatar'])
+    
+    if not fields:
+        return jsonify({"status": "no change"}), 200
+        
+    values.append(email)
+    query = f"UPDATE users SET {', '.join(fields)} WHERE email = ?"
+    
+    conn.execute(query, values)
+    conn.commit()
+    
+    # Return updated user
+    user = conn.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+    conn.close()
+    
+    return jsonify({"status": "updated", "user": dict(user)}), 200
 
 @app.route('/api/login', methods=['POST'])
 def login():
