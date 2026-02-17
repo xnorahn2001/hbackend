@@ -273,7 +273,7 @@ def add_task():
         conn = get_db_connection()
         c = conn.cursor()
         c.execute('INSERT INTO tasks (title, assigned_to, assigned_from, status, priority, type, description, subtasks, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                  (data['title'], data['to'], data['from'], 'pending', data['priority'], data['type'], data.get('details', ''), subtasks_json, datetime.datetime.now(datetime.timezone.utc).isoformat()))
+                  (data.get('title'), data.get('assigned_to'), data.get('from'), 'pending', data.get('priority'), data.get('type'), data.get('details', ''), subtasks_json, datetime.datetime.now(datetime.timezone.utc).isoformat()))
         conn.commit()
         task_id = c.lastrowid
         conn.close()
@@ -518,5 +518,3 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     print(f"Serving on http://0.0.0.0:{port}")
     app.run(host='0.0.0.0', debug=True, port=port)
-# Force Update
-# Force Update
