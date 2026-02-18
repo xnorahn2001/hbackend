@@ -98,6 +98,14 @@ def init_db():
         timestamp TEXT
     )''')
 
+    c.execute('''CREATE TABLE IF NOT EXISTS comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id INTEGER,
+        author TEXT,
+        content TEXT,
+        timestamp TEXT
+    )''')
+
     # Migration: Ensure columns exist if tables already created
     try: c.execute("ALTER TABLE users ADD COLUMN last_seen TEXT")
     except: pass
@@ -373,6 +381,15 @@ def add_post():
     conn.close()
     return jsonify({"status": "posted"}), 201
 
+@app.route('/api/posts/<int:id>', methods=['DELETE'])
+def delete_post(id):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM posts WHERE id = ?', (id,))
+    conn.execute('DELETE FROM comments WHERE post_id = ?', (id,)) # Cleanup comments too
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "deleted"}), 200
+
 # --- SHARED LINKS API ---
 @app.route('/api/links', methods=['GET'])
 def get_links():
@@ -518,5 +535,4 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     print(f"Serving on http://0.0.0.0:{port}")
     app.run(host='0.0.0.0', debug=True, port=port)
-# Force Update
 # Force Update
