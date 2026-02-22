@@ -138,7 +138,6 @@ def init_db():
     except: pass
     try: c.execute("ALTER TABLE tasks ADD COLUMN description TEXT")
     except: pass
-    except: pass
     try: c.execute("ALTER TABLE roadmap ADD COLUMN parentId INTEGER")
     except: pass
     try: c.execute("ALTER TABLE roadmap ADD COLUMN description TEXT")
