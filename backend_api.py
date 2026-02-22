@@ -138,6 +138,7 @@ def init_db():
     except: pass
     try: c.execute("ALTER TABLE tasks ADD COLUMN description TEXT")
     except: pass
+    except: pass
     try: c.execute("ALTER TABLE roadmap ADD COLUMN parentId INTEGER")
     except: pass
     try: c.execute("ALTER TABLE roadmap ADD COLUMN description TEXT")
@@ -145,6 +146,8 @@ def init_db():
     try: c.execute("ALTER TABLE roadmap ADD COLUMN start_date TEXT")
     except: pass
     try: c.execute("ALTER TABLE shared_links ADD COLUMN description TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE shared_links ADD COLUMN owner TEXT")
     except: pass
     try: c.execute("ALTER TABLE shared_links ADD COLUMN contentType TEXT")
     except: pass
@@ -419,13 +422,17 @@ def add_link():
     import json
     file_data_json = json.dumps(data.get('fileData')) if data.get('fileData') else None
     
-    conn = get_db_connection()
-    conn.execute('INSERT INTO shared_links (name, url, type, owner, description, contentType, fileData, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                 (data.get('name'), data.get('url'), data.get('type', 'link'), data.get('from'), 
-                  data.get('desc'), data.get('contentType'), file_data_json, datetime.datetime.now(datetime.timezone.utc).isoformat()))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "created"}), 201
+    try:
+        conn = get_db_connection()
+        conn.execute('INSERT INTO shared_links (name, url, type, owner, description, contentType, fileData, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                     (data.get('name'), data.get('url'), data.get('type', 'link'), data.get('from'), 
+                      data.get('desc'), data.get('contentType'), file_data_json, datetime.datetime.now(datetime.timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "created"}), 201
+    except Exception as e:
+        print(f"Error adding link: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/links/<int:id>', methods=['PUT'])
 def update_link(id):
