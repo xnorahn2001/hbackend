@@ -152,6 +152,8 @@ def init_db():
     except: pass
     try: c.execute("ALTER TABLE shared_links ADD COLUMN fileData TEXT")
     except: pass
+    try: c.execute("ALTER TABLE shared_links ADD COLUMN parentId INTEGER")
+    except: pass
     try:
         c.execute("CREATE TABLE IF NOT EXISTS common_projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, icon TEXT, status TEXT, type TEXT, budget TEXT, person TEXT, tags TEXT, endDate TEXT, subitems TEXT, timestamp TEXT)")
     except: pass
@@ -423,9 +425,10 @@ def add_link():
     
     try:
         conn = get_db_connection()
-        conn.execute('INSERT INTO shared_links (name, url, type, owner, description, contentType, fileData, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        conn.execute('INSERT INTO shared_links (name, url, type, owner, description, contentType, fileData, parentId, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                      (data.get('name'), data.get('url'), data.get('type', 'link'), data.get('from'), 
-                      data.get('desc'), data.get('contentType'), file_data_json, datetime.datetime.now(datetime.timezone.utc).isoformat()))
+                      data.get('desc'), data.get('contentType'), file_data_json, data.get('parentId'), 
+                      datetime.datetime.now(datetime.timezone.utc).isoformat()))
         conn.commit()
         conn.close()
         return jsonify({"status": "created"}), 201
