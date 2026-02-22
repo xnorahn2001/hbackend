@@ -481,7 +481,7 @@ def add_roadmap():
         category = data.get('category', 'general')
         status = data.get('status', 'pending')
         priority = data.get('priority', 'medium')
-        owner = data.get('owner') or data.get('from') or 'nora@hyat.co'
+        owner = data.get('owner') or data.get('from') or 'norah@hyat.co'
         due_date = data.get('due_date')
         start_date = data.get('start_date')
         progress = data.get('progress', 0)
