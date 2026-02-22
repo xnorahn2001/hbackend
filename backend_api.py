@@ -98,6 +98,29 @@ def init_db():
         timestamp TEXT
     )''')
 
+    c.execute('''CREATE TABLE IF NOT EXISTS common_projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        icon TEXT,
+        status TEXT,
+        type TEXT,
+        budget TEXT,
+        person TEXT,
+        tags TEXT,
+        endDate TEXT,
+        subitems TEXT,
+        timestamp TEXT
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS calendar_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        note TEXT NOT NULL,
+        user TEXT,
+        type TEXT,
+        timestamp TEXT
+    )''')
+
     c.execute('''CREATE TABLE IF NOT EXISTS comments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         post_id INTEGER,
@@ -128,15 +151,7 @@ def init_db():
     try: c.execute("ALTER TABLE shared_links ADD COLUMN fileData TEXT")
     except: pass
     try:
-        c.execute('''CREATE TABLE IF NOT EXISTS shared_plans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            owner TEXT,
-            shared_with TEXT,
-            day_name TEXT,
-            archived_date TEXT,
-            plan_content TEXT,
-            timestamp TEXT
-        )''')
+        c.execute("CREATE TABLE IF NOT EXISTS common_projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, icon TEXT, status TEXT, type TEXT, budget TEXT, person TEXT, tags TEXT, endDate TEXT, subitems TEXT, timestamp TEXT)")
     except: pass
 
     # Insert Initial Users if empty
@@ -319,7 +334,7 @@ def update_task(id):
                     type = COALESCE(?, type),
                     description = COALESCE(?, description)
                     WHERE id = ?''',
-                 (data.get('title'), data.get('to'), data.get('priority'), data.get('type'), data.get('details'), id))
+                 (data.get('title'), data.get('assigned_to'), data.get('priority'), data.get('type'), data.get('details'), id))
     conn.commit()
     conn.close()
     return jsonify({"status": "updated"}), 200
@@ -529,10 +544,142 @@ def get_shared_plans():
     conn.close()
     return jsonify([dict(p) for p in plans])
 
+# --- PROJECTS API ---
+@app.route('/api/projects', methods=['GET'])
+def get_projects():
+    conn = get_db_connection()
+    projects = conn.execute('SELECT * FROM common_projects ORDER BY id DESC').fetchall()
+    conn.close()
+    import json
+    results = []
+    for p in projects:
+        d = dict(p)
+        try:
+            d['subitems'] = json.loads(d['subitems']) if d['subitems'] else []
+        except:
+            d['subitems'] = []
+        results.append(d)
+    return jsonify(results)
+
+@app.route('/api/projects', methods=['POST'])
+def add_project():
+    data = request.json
+    import json
+    subitems_json = json.dumps(data.get('subitems', []))
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''INSERT INTO common_projects 
+                 (name, icon, status, type, budget, person, tags, endDate, subitems, timestamp) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              (data.get('name'), data.get('icon'), data.get('status', 'working'), data.get('type'),
+               data.get('budget'), data.get('person'), data.get('tags'), data.get('endDate'),
+               subitems_json, datetime.datetime.now(datetime.timezone.utc).isoformat()))
+    conn.commit()
+    new_id = c.lastrowid
+    conn.close()
+    return jsonify({"status": "created", "id": new_id}), 201
+
+@app.route('/api/projects/<int:id>', methods=['PUT'])
+def update_project(id):
+    data = request.json
+    import json
+    conn = get_db_connection()
+    
+    # Get existing subitems if we're only updating some fields
+    if 'subitems' in data:
+        subitems_json = json.dumps(data.get('subitems'))
+    else:
+        subitems_json = None
+    
+    if subitems_json is not None:
+         conn.execute('''UPDATE common_projects SET 
+                        name = COALESCE(?, name),
+                        icon = COALESCE(?, icon),
+                        status = COALESCE(?, status),
+                        type = COALESCE(?, type),
+                        budget = COALESCE(?, budget),
+                        person = COALESCE(?, person),
+                        tags = COALESCE(?, tags),
+                        endDate = COALESCE(?, endDate),
+                        subitems = ?
+                        WHERE id = ?''',
+                     (data.get('name'), data.get('icon'), data.get('status'), data.get('type'), 
+                      data.get('budget'), data.get('person'), data.get('tags'), data.get('endDate'),
+                      subitems_json, id))
+    else:
+         conn.execute('''UPDATE common_projects SET 
+                        name = COALESCE(?, name),
+                        icon = COALESCE(?, icon),
+                        status = COALESCE(?, status),
+                        type = COALESCE(?, type),
+                        budget = COALESCE(?, budget),
+                        person = COALESCE(?, person),
+                        tags = COALESCE(?, tags),
+                        endDate = COALESCE(?, endDate)
+                        WHERE id = ?''',
+                     (data.get('name'), data.get('icon'), data.get('status'), data.get('type'), 
+                      data.get('budget'), data.get('person'), data.get('tags'), data.get('endDate'), id))
+         
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "updated"}), 200
+
+@app.route('/api/projects/<int:id>', methods=['DELETE'])
+def delete_project(id):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM common_projects WHERE id = ?', (id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "deleted"}), 200
+
+# --- CALENDAR API ---
+@app.route('/api/calendar', methods=['GET'])
+def get_calendar():
+    conn = get_db_connection()
+    events = conn.execute('SELECT * FROM calendar_events ORDER BY date ASC').fetchall()
+    conn.close()
+    return jsonify([dict(e) for e in events])
+
+@app.route('/api/calendar', methods=['POST'])
+def add_calendar_event():
+    data = request.json
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('INSERT INTO calendar_events (date, note, user, type, timestamp) VALUES (?, ?, ?, ?, ?)',
+              (data.get('date'), data.get('note'), data.get('user'), data.get('type', 'event'), 
+               datetime.datetime.now(datetime.timezone.utc).isoformat()))
+    conn.commit()
+    new_id = c.lastrowid
+    conn.close()
+    return jsonify({"status": "created", "id": new_id}), 201
+
+@app.route('/api/calendar/<int:id>', methods=['PUT'])
+def update_calendar_event(id):
+    data = request.json
+    conn = get_db_connection()
+    conn.execute('''UPDATE calendar_events SET 
+                    date = COALESCE(?, date),
+                    note = COALESCE(?, note),
+                    user = COALESCE(?, user),
+                    type = COALESCE(?, type)
+                    WHERE id = ?''',
+                 (data.get('date'), data.get('note'), data.get('user'), data.get('type'), id))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "updated"}), 200
+
+@app.route('/api/calendar/<int:id>', methods=['DELETE'])
+def delete_calendar_event(id):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM calendar_events WHERE id = ?', (id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "deleted"}), 200
+
 init_db()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     print(f"Serving on http://0.0.0.0:{port}")
     app.run(host='0.0.0.0', debug=True, port=port)
-# Force Update
