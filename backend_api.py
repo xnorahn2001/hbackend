@@ -70,6 +70,7 @@ def init_db():
         description TEXT,
         contentType TEXT,
         fileData TEXT,
+        parentId INTEGER,
         timestamp TEXT
     )''')
 
