@@ -139,6 +139,10 @@ def init_db():
     except: pass
     try: c.execute("ALTER TABLE tasks ADD COLUMN description TEXT")
     except: pass
+    try: c.execute("ALTER TABLE tasks ADD COLUMN task_time TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE tasks ADD COLUMN project_name TEXT")
+    except: pass
     try: c.execute("ALTER TABLE roadmap ADD COLUMN parentId INTEGER")
     except: pass
     try: c.execute("ALTER TABLE roadmap ADD COLUMN description TEXT")
@@ -300,8 +304,13 @@ def add_task():
         
         conn = get_db_connection()
         c = conn.cursor()
-        c.execute('INSERT INTO tasks (title, assigned_to, assigned_from, status, priority, type, description, subtasks, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                  (data.get('title'), data.get('assigned_to'), data.get('from'), 'pending', data.get('priority'), data.get('type'), data.get('details', ''), subtasks_json, datetime.datetime.now(datetime.timezone.utc).isoformat()))
+        c.execute('''INSERT INTO tasks 
+                     (title, assigned_to, assigned_from, status, priority, type, description, subtasks, task_time, project_name, created_at) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (data.get('title'), data.get('assigned_to'), data.get('from'), 'pending', 
+                   data.get('priority'), data.get('type'), data.get('details', ''), 
+                   subtasks_json, data.get('taskTime'), data.get('project_name'),
+                   datetime.datetime.now(datetime.timezone.utc).isoformat()))
         conn.commit()
         task_id = c.lastrowid
         conn.close()
@@ -331,15 +340,22 @@ def update_task_status(id):
 @app.route('/api/tasks/<int:id>', methods=['PUT'])
 def update_task(id):
     data = request.json
+    import json
+    subtasks_json = json.dumps(data.get('subtasks')) if 'subtasks' in data else None
+    
     conn = get_db_connection()
     conn.execute('''UPDATE tasks SET 
                     title = COALESCE(?, title),
                     assigned_to = COALESCE(?, assigned_to),
                     priority = COALESCE(?, priority),
                     type = COALESCE(?, type),
-                    description = COALESCE(?, description)
+                    description = COALESCE(?, description),
+                    task_time = COALESCE(?, task_time),
+                    project_name = COALESCE(?, project_name),
+                    subtasks = COALESCE(?, subtasks)
                     WHERE id = ?''',
-                 (data.get('title'), data.get('assigned_to'), data.get('priority'), data.get('type'), data.get('details'), id))
+                 (data.get('title'), data.get('assigned_to'), data.get('priority'), data.get('type'), 
+                  data.get('details'), data.get('taskTime'), data.get('project_name'), subtasks_json, id))
     conn.commit()
     conn.close()
     return jsonify({"status": "updated"}), 200
