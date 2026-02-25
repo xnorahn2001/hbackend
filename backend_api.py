@@ -324,11 +324,25 @@ def add_task():
 
 @app.route('/api/tasks/<int:id>', methods=['DELETE'])
 def delete_task(id):
+    user_email = request.args.get('user_email')
     conn = get_db_connection()
-    conn.execute('DELETE FROM tasks WHERE id = ?', (id,))
-    conn.commit()
+    task = conn.execute('SELECT assigned_to, assigned_from FROM tasks WHERE id = ?', (id,)).fetchone()
+    
+    if not task:
+        conn.close()
+        return jsonify({"status": "not_found"}), 404
+        
+    # Check permission (Owner, Sender, or GM)
+    if user_email and (user_email.lower() == 'norah@hyat.co' or 
+                       str(task['assigned_to']).lower() == user_email.lower() or 
+                       str(task['assigned_from']).lower() == user_email.lower()):
+        conn.execute('DELETE FROM tasks WHERE id = ?', (id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "deleted"}), 200
+    
     conn.close()
-    return jsonify({"status": "deleted"}), 200
+    return jsonify({"status": "unauthorized"}), 403
 
 @app.route('/api/tasks/<int:id>/status', methods=['PUT'])
 def update_task_status(id):
@@ -423,12 +437,24 @@ def add_post():
 
 @app.route('/api/posts/<int:id>', methods=['DELETE'])
 def delete_post(id):
+    user_email = request.args.get('user_email')
     conn = get_db_connection()
-    conn.execute('DELETE FROM posts WHERE id = ?', (id,))
-    conn.execute('DELETE FROM comments WHERE post_id = ?', (id,)) # Cleanup comments too
-    conn.commit()
+    post = conn.execute('SELECT sender FROM posts WHERE id = ?', (id,)).fetchone()
+    
+    if not post:
+        conn.close()
+        return jsonify({"status": "not_found"}), 404
+        
+    if user_email and (user_email.lower() == 'norah@hyat.co' or 
+                       str(post['sender']).lower() == user_email.lower()):
+        conn.execute('DELETE FROM posts WHERE id = ?', (id,))
+        conn.execute('DELETE FROM comments WHERE post_id = ?', (id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "deleted"}), 200
+        
     conn.close()
-    return jsonify({"status": "deleted"}), 200
+    return jsonify({"status": "unauthorized"}), 403
 
 # --- SHARED LINKS API ---
 @app.route('/api/links', methods=['GET'])
@@ -477,11 +503,23 @@ def update_link(id):
 
 @app.route('/api/links/<int:id>', methods=['DELETE'])
 def delete_link(id):
+    user_email = request.args.get('user_email')
     conn = get_db_connection()
-    conn.execute('DELETE FROM shared_links WHERE id = ?', (id,))
-    conn.commit()
+    link = conn.execute('SELECT owner FROM shared_links WHERE id = ?', (id,)).fetchone()
+    
+    if not link:
+        conn.close()
+        return jsonify({"status": "not_found"}), 404
+        
+    if user_email and (user_email.lower() == 'norah@hyat.co' or 
+                       str(link['owner']).lower() == user_email.lower()):
+        conn.execute('DELETE FROM shared_links WHERE id = ?', (id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "deleted"}), 200
+        
     conn.close()
-    return jsonify({"status": "deleted"}), 200
+    return jsonify({"status": "unauthorized"}), 403
 
 # --- ROADMAP API ---
 @app.route('/api/roadmap', methods=['GET'])
@@ -522,11 +560,16 @@ def add_roadmap():
 
 @app.route('/api/roadmap/<int:id>', methods=['DELETE'])
 def delete_roadmap(id):
-    conn = get_db_connection()
-    conn.execute('DELETE FROM roadmap WHERE id = ?', (id,))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "deleted"}), 200
+    user_email = request.args.get('user_email')
+    # Roadmap items are generally team-wide, but let's allow GM to delete
+    if user_email and user_email.lower() == 'norah@hyat.co':
+        conn = get_db_connection()
+        conn.execute('DELETE FROM roadmap WHERE id = ?', (id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "deleted"}), 200
+    
+    return jsonify({"status": "unauthorized"}), 403
 
 @app.route('/api/roadmap/<int:id>', methods=['PUT'])
 def update_roadmap_item(id):
@@ -657,11 +700,23 @@ def update_project(id):
 
 @app.route('/api/projects/<int:id>', methods=['DELETE'])
 def delete_project(id):
+    user_email = request.args.get('user_email')
     conn = get_db_connection()
-    conn.execute('DELETE FROM common_projects WHERE id = ?', (id,))
-    conn.commit()
+    proj = conn.execute('SELECT person FROM common_projects WHERE id = ?', (id,)).fetchone()
+    
+    if not proj:
+        conn.close()
+        return jsonify({"status": "not_found"}), 404
+        
+    if user_email and (user_email.lower() == 'norah@hyat.co' or 
+                       str(proj['person']).lower() == user_email.lower()):
+        conn.execute('DELETE FROM common_projects WHERE id = ?', (id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "deleted"}), 200
+        
     conn.close()
-    return jsonify({"status": "deleted"}), 200
+    return jsonify({"status": "unauthorized"}), 403
 
 # --- CALENDAR API ---
 @app.route('/api/calendar', methods=['GET'])
@@ -701,11 +756,23 @@ def update_calendar_event(id):
 
 @app.route('/api/calendar/<int:id>', methods=['DELETE'])
 def delete_calendar_event(id):
+    user_email = request.args.get('user_email')
     conn = get_db_connection()
-    conn.execute('DELETE FROM calendar_events WHERE id = ?', (id,))
-    conn.commit()
+    event = conn.execute('SELECT user FROM calendar_events WHERE id = ?', (id,)).fetchone()
+    
+    if not event:
+        conn.close()
+        return jsonify({"status": "not_found"}), 404
+        
+    if user_email and (user_email.lower() == 'norah@hyat.co' or 
+                       str(event['user']).lower() == user_email.lower()):
+        conn.execute('DELETE FROM calendar_events WHERE id = ?', (id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "deleted"}), 200
+        
     conn.close()
-    return jsonify({"status": "deleted"}), 200
+    return jsonify({"status": "unauthorized"}), 403
 
 init_db()
 
