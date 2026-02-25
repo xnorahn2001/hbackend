@@ -1,3 +1,4 @@
+# Hayat Backend API - Updated: 2026-02-25
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import sqlite3
