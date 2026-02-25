@@ -256,12 +256,19 @@ def get_users():
 
 @app.route('/api/admin/clear_all', methods=['POST'])
 def clear_all_data():
+    user_email = request.args.get('user_email')
+    if not user_email or user_email.lower() != 'norah@hyat.co':
+        return jsonify({"status": "unauthorized"}), 403
+        
     conn = get_db_connection()
     conn.execute('DELETE FROM tasks')
     conn.execute('DELETE FROM roadmap')
     conn.execute('DELETE FROM shared_links')
     conn.execute('DELETE FROM messages')
     conn.execute('DELETE FROM posts')
+    conn.execute('DELETE FROM common_projects')
+    conn.execute('DELETE FROM calendar_events')
+    conn.execute('DELETE FROM shared_plans')
     conn.commit()
     conn.close()
     return jsonify({"status": "cleared"}), 200
