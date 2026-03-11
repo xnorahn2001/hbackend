@@ -131,6 +131,20 @@ def init_db():
         timestamp TEXT
     )''')
 
+    c.execute('''CREATE TABLE IF NOT EXISTS meeting_minutes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject TEXT NOT NULL,
+        meeting_date TEXT,
+        start_time TEXT,
+        end_time TEXT,
+        next_meeting_date TEXT,
+        next_meeting_time TEXT,
+        attendance TEXT,
+        items TEXT,
+        created_by TEXT,
+        timestamp TEXT
+    )''')
+
     # Migration: Ensure columns exist if tables already created
     try: c.execute("ALTER TABLE users ADD COLUMN last_seen TEXT")
     except: pass
@@ -269,6 +283,7 @@ def clear_all_data():
     conn.execute('DELETE FROM common_projects')
     conn.execute('DELETE FROM calendar_events')
     conn.execute('DELETE FROM shared_plans')
+    conn.execute('DELETE FROM meeting_minutes')
     conn.commit()
     conn.close()
     return jsonify({"status": "cleared"}), 200
@@ -780,6 +795,61 @@ def delete_calendar_event(id):
         
     conn.close()
     return jsonify({"status": "unauthorized"}), 403
+
+@app.route('/api/meetings', methods=['GET'])
+def get_meetings():
+    conn = get_db_connection()
+    meetings = conn.execute('SELECT * FROM meeting_minutes ORDER BY id DESC').fetchall()
+    conn.close()
+    import json
+    results = []
+    for m in meetings:
+        d = dict(m)
+        try:
+            d['attendance'] = json.loads(d['attendance']) if d['attendance'] else []
+        except: d['attendance'] = []
+        try:
+            d['items'] = json.loads(d['items']) if d['items'] else []
+        except: d['items'] = []
+        results.append(d)
+    return jsonify(results)
+
+@app.route('/api/meetings', methods=['POST'])
+def add_meeting():
+    try:
+        data = request.json
+        import json
+        attendance_json = json.dumps(data.get('attendance', []))
+        items_json = json.dumps(data.get('items', []))
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''INSERT INTO meeting_minutes 
+                     (subject, meeting_date, start_time, end_time, next_meeting_date, next_meeting_time, attendance, items, created_by, timestamp) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (data.get('subject'), data.get('meeting_date'), data.get('start_time'), data.get('end_time'),
+                   data.get('next_meeting_date'), data.get('next_meeting_time'),
+                   attendance_json, items_json, data.get('created_by'),
+                   datetime.datetime.now(datetime.timezone.utc).isoformat()))
+        conn.commit()
+        meeting_id = c.lastrowid
+        conn.close()
+        return jsonify({"status": "created", "id": meeting_id}), 201
+    except Exception as e:
+        print(f"Error adding meeting: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/meetings/<int:id>', methods=['DELETE'])
+def delete_meeting(id):
+    user_email = request.args.get('user_email')
+    if not user_email or user_email.lower() != 'norah@hyat.co':
+        return jsonify({"status": "unauthorized"}), 403
+        
+    conn = get_db_connection()
+    conn.execute('DELETE FROM meeting_minutes WHERE id = ?', (id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "deleted"}), 200
 
 init_db()
 
