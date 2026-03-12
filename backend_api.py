@@ -275,14 +275,12 @@ def clear_all_data():
         return jsonify({"status": "unauthorized"}), 403
         
     conn = get_db_connection()
-    conn.execute('DELETE FROM tasks')
-    conn.execute('DELETE FROM roadmap')
+    # Keeping tasks, roadmap, and shared_plans as per user preference
     conn.execute('DELETE FROM shared_links')
     conn.execute('DELETE FROM messages')
     conn.execute('DELETE FROM posts')
     conn.execute('DELETE FROM common_projects')
     conn.execute('DELETE FROM calendar_events')
-    conn.execute('DELETE FROM shared_plans')
     conn.execute('DELETE FROM meeting_minutes')
     conn.commit()
     conn.close()
