@@ -637,6 +637,20 @@ def get_shared_plans():
     conn.close()
     return jsonify([dict(p) for p in plans])
 
+@app.route('/api/shared_plans', methods=['DELETE'])
+def delete_shared_plan():
+    user_email = request.args.get('user_email')
+    archived_date = request.args.get('archived_date')
+    
+    if not user_email or not archived_date:
+        return jsonify({"status": "error", "message": "Missing parameters"}), 400
+        
+    conn = get_db_connection()
+    conn.execute('DELETE FROM shared_plans WHERE owner = ? AND archived_date = ?', (user_email, archived_date))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "deleted"}), 200
+
 # --- PROJECTS API ---
 @app.route('/api/projects', methods=['GET'])
 def get_projects():
