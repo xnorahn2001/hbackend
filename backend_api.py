@@ -176,6 +176,21 @@ def init_db():
     except: pass
     try: c.execute("ALTER TABLE shared_links ADD COLUMN parentId INTEGER")
     except: pass
+    
+    # Calendar Enhancements
+    try: c.execute("ALTER TABLE calendar_events ADD COLUMN start_time TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE calendar_events ADD COLUMN end_time TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE calendar_events ADD COLUMN color TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE calendar_events ADD COLUMN guests TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE calendar_events ADD COLUMN location TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE calendar_events ADD COLUMN description TEXT")
+    except: pass
+    
     try:
         c.execute("CREATE TABLE IF NOT EXISTS common_projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, icon TEXT, status TEXT, type TEXT, budget TEXT, person TEXT, tags TEXT, endDate TEXT, subitems TEXT, timestamp TEXT)")
     except: pass
@@ -763,11 +778,18 @@ def get_calendar():
 @app.route('/api/calendar', methods=['POST'])
 def add_calendar_event():
     data = request.json
+    import json
+    guests_str = json.dumps(data.get('guests', [])) if data.get('guests') else '[]'
+    
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('INSERT INTO calendar_events (date, note, user, type, timestamp) VALUES (?, ?, ?, ?, ?)',
+    c.execute('''INSERT INTO calendar_events 
+                 (date, note, user, type, timestamp, start_time, end_time, color, guests, location, description) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
               (data.get('date'), data.get('note'), data.get('user'), data.get('type', 'event'), 
-               datetime.datetime.now(datetime.timezone.utc).isoformat()))
+               datetime.datetime.now(datetime.timezone.utc).isoformat(),
+               data.get('start_time'), data.get('end_time'), data.get('color'),
+               guests_str, data.get('location'), data.get('description')))
     conn.commit()
     new_id = c.lastrowid
     conn.close()
@@ -776,14 +798,25 @@ def add_calendar_event():
 @app.route('/api/calendar/<int:id>', methods=['PUT'])
 def update_calendar_event(id):
     data = request.json
+    import json
+    guests_str = json.dumps(data.get('guests', [])) if 'guests' in data else None
+    
     conn = get_db_connection()
     conn.execute('''UPDATE calendar_events SET 
                     date = COALESCE(?, date),
                     note = COALESCE(?, note),
                     user = COALESCE(?, user),
-                    type = COALESCE(?, type)
+                    type = COALESCE(?, type),
+                    start_time = COALESCE(?, start_time),
+                    end_time = COALESCE(?, end_time),
+                    color = COALESCE(?, color),
+                    guests = COALESCE(?, guests),
+                    location = COALESCE(?, location),
+                    description = COALESCE(?, description)
                     WHERE id = ?''',
-                 (data.get('date'), data.get('note'), data.get('user'), data.get('type'), id))
+                 (data.get('date'), data.get('note'), data.get('user'), data.get('type'), 
+                  data.get('start_time'), data.get('end_time'), data.get('color'),
+                  guests_str, data.get('location'), data.get('description'), id))
     conn.commit()
     conn.close()
     return jsonify({"status": "updated"}), 200
