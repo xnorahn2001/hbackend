@@ -1,19 +1,89 @@
 # Hayat Backend API - Updated: 2026-02-26
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+app = Flask(__name__)
+CORS(app)
+
 import sqlite3
 import datetime
 import os
+import re
 
-app = Flask(__name__)
-CORS(app)  # Enable Cross-Origin requests so the HTML can talk to this server
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
 
 DB_FILE = 'hayat.db'
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+class CursorWrapper:
+    def __init__(self, conn, is_pg):
+        self.db_conn = conn
+        self.is_pg = is_pg
+        self.cursor = conn.cursor()
+
+    def _convert_query(self, query):
+        if self.is_pg:
+            query = query.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'SERIAL PRIMARY KEY')
+            query = query.replace('?', '%s')
+        return query
+
+    def execute(self, query, params=None):
+        query = self._convert_query(query)
+        if params is not None:
+            self.cursor.execute(query, params)
+        else:
+            self.cursor.execute(query)
+        return self
+
+    def executemany(self, query, params_list):
+        query = self._convert_query(query)
+        self.cursor.executemany(query, params_list)
+        return self
+
+    def fetchone(self):
+        return self.cursor.fetchone()
+
+    def fetchall(self):
+        return self.cursor.fetchall()
+
+    @property
+    def lastrowid(self):
+        if self.is_pg:
+            self.cursor.execute("SELECT LASTVAL()")
+            return self.cursor.fetchone()['lastval']
+        return self.cursor.lastrowid
+
+class DBConnection:
+    def __init__(self):
+        self.is_postgres = bool(DATABASE_URL and PSYCOPG2_AVAILABLE)
+        if self.is_postgres:
+            self.conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        else:
+            self.conn = sqlite3.connect(DB_FILE)
+            self.conn.row_factory = sqlite3.Row
+
+    def cursor(self):
+        return CursorWrapper(self.conn, self.is_postgres)
+
+    def execute(self, query, params=None):
+        return self.cursor().execute(query, params)
+
+    def executemany(self, query, params_list):
+        return self.cursor().executemany(query, params_list)
+
+    def commit(self):
+        self.conn.commit()
+
+    def close(self):
+        self.conn.close()
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return DBConnection()
+
 
 def init_db():
     conn = get_db_connection()
