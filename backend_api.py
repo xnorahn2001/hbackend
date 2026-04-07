@@ -17,7 +17,7 @@ except ImportError:
     PSYCOPG2_AVAILABLE = False
 
 DB_FILE = 'hayat.db'
-DATABASE_URL = os.environ.get('DATABASE_URL')
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres:hyatdatabase24@db.wmazkbrspvdrwrummeqe.supabase.co:5432/postgres')
 
 class CursorWrapper:
     def __init__(self, conn, is_pg):
